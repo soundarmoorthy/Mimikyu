@@ -12,6 +12,7 @@ using System.Collections.Concurrent;
 
 namespace LoadPayerPlanDataToMongo
 {
+
     class Program
     {
         static void Main(string[] args)
@@ -19,8 +20,17 @@ namespace LoadPayerPlanDataToMongo
             //MongoPayerLoader loader = new MongoPayerLoader();
             //loader.Load();
 
-            MongoToSqlServerPayerLoader p = new MongoToSqlServerPayerLoader();
-            p.QueryLoad();
+            //MongoToSqlZipCodeLoader p = new MongoToSqlZipCodeLoader();
+            //p.QueryLoad();
+
+            //MongoToSqlServerPatientLoader loader = new MongoToSqlServerPatientLoader();
+            //loader.Run();
+
+            //MongoToSqlServerMemberNetwork loader = new MongoToSqlServerMemberNetwork();
+            //loader.Run();
+
+            MongoToSqlServerPracticeLoader loader = new MongoToSqlServerPracticeLoader();
+            loader.Load();
 
         }
     }

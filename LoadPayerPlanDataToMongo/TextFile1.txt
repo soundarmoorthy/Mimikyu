@@ -1,0 +1,55 @@
+﻿
+
+//Use this query to populate PatientPayerPlan. This should be done after loading payerplan, patient, zipcodepayerplan, address tables.j
+
+insert into provider.PatientPayerPlan (Patient, PayerPlan, IsPrimary, SubscriberId, IsActive, CreatedBy, GroupMemberId) 
+select p.PatientKey, pp.PayerPlanKey,1 as 'IsPrimary', ABS(CHECKSUM(NewId()))  as 'SubscriberID', 1 as 'IsActive', 1 as 'CreatedBy', 
+ABS(CHECKSUM(NewId())) % 100000 as 'GroupMemberId'
+from provider.Patient p join provider.Address a
+on p.Address = a.AddressKey
+join geo.ZipCodePayerPlan z
+on a.ZipCode = z.ZipCode
+join provider.PayerPlan pp
+on pp.PayerPlanKey = z.PayerPlan;
+
+
+PatientPayerPlan - It should contain the list of insurances that can be assigned to a patient based on zip code similarity.
+
+Patients
+Address
+
+ZipCodePayerPlan
+PayerPlan
+
+select * from provider.provider
+
+insert into provider.provider 
+(ProviderType, NationalProviderIdentifier, IsAcceptingReferral, 
+IsSearchable, IsActive, Description, CreatedBy) 
+OUTPUT inserted.ProviderKey
+values (1, '{0}', 1,1,1, 'This is an awesome practice', 1)  --NPI
+
+exec sp_help 'provider.Practice'
+select * from provider.Practice
+insert into provider.Practice
+(Provider,Name, PracticeIdentifier,PracticeType) 
+OUTPUT inserted.PracticeIdentifier
+values ('{0}', '{1}', CHECKSUM(NewId()) % 1000000, 1)  --ProviderKey, Practice Name
+
+
+exec sp_help 'provider.practiceLocation'
+select * from provider.practicelocation 
+insert into provider.PracticeLocation
+(Name, Practice, Address, TimeZone, PrimaryPhone,PrimaryFax, 
+IsPrimaryLocation, IsActive, CreatedBy, IsFaxOnly, IsAmbulatory)
+OUTPUT INSERTED.PracticeLocationkey
+values 
+('{0}', '{1}', '{2}', '{3}', '{4}', '{5}', 1,1,1, CAST(ROUND(RAND(),0) AS BIT), 1)
+--Practice Name, PracticeIdentifier, Address, TimeZone, Primary Phone, Primary Fax
+
+select * from provider.PracticeMemberNetwork
+insert into provider.PracticeMemberNetwork
+(Practice, MemberNetwork, PracticeMemberNetworkState, IsActive, CreatedBy)
+values ({0}, {1}, 3, 1,1)
+--Practice Identifier, MemberNetwork, 
+select * from provider.PracticeMemberNetworkState

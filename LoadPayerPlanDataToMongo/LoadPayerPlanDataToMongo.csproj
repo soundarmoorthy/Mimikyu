@@ -69,6 +69,11 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Address.cs" />
+    <Compile Include="MongoToSqlServerMemberNetwork.cs" />
+    <Compile Include="MongoToSqlServerPatientLoader.cs" />
+    <Compile Include="MongoToSqlServerProviderLoader.cs" />
+    <Compile Include="MongoToSqlZipCodeLoader.cs" />
     <Compile Include="MongoToSqlServerPayerLoader.cs" />
     <Compile Include="MongoPayerLoader.cs" />
     <Compile Include="Program.cs" />
@@ -80,6 +85,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="PayerDictionary.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="TextFile1.txt" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
