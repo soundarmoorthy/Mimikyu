@@ -32,6 +32,9 @@ namespace LoadPayerPlanDataToMongo
             MongoToSqlServerPracticeLoader loader = new MongoToSqlServerPracticeLoader();
             loader.Load();
 
+            //NPPESLoader loader = new NPPESLoader();
+            //loader.Run();
+
         }
     }
 }

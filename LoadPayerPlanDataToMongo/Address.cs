@@ -3,6 +3,7 @@ using System.Linq;
 using System.Collections;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using System.Collections.Generic;
 
 namespace LoadPayerPlanDataToMongo
 {
@@ -16,71 +17,53 @@ namespace LoadPayerPlanDataToMongo
         public string AddressLine1 { get; private set; }
         public string AddressLine2 { get; private set; }
 
+        public string NPI { get; private set; }
 
-        private string[] parts;
-        private IMongoCollection<BsonDocument> zipCodeStates;
 
         public Address(BsonDocument b, IMongoCollection<BsonDocument> x)
         {
-            this.zipCodeStates = x;
+            if (cache == null)
+                setupLookup(x);
 
-            this.parts = getAddress(b);
-            setupAddress();
+            formAddress(b);
+            NPI = get("_id", b);
         }
 
-        private void setupAddress()
+        private void setupLookup(IMongoCollection<BsonDocument> zipCodeStates)
         {
-            var enumParts = from part in parts
-                            select part.Trim(' ');
-            var address = string.Join(" ", enumParts);
-
-            var lexemes = address.Split(' ');
-
-            foreach (var lexeme in lexemes)
-            {
-                if (IsZip(lexeme) && Zip == null)
-                    Zip = lexeme;
-
-                else if (IsState(lexeme) && State == null)
-                    State = lexeme;
-
-                else if (IsCity(lexeme) && City == null)
-                    City = lexeme;
-
-                else if (string.IsNullOrEmpty(AddressLine1))
-                    AddressLine1 = lexeme.Trim(' ').Trim('\"');
-
-                else if (string.IsNullOrEmpty(AddressLine2))
-                    AddressLine2 = lexeme.Trim(' ').Trim('\"');
-            }
-            if(Zip != null)
-            {
-                var addr = zipCodeStates.Find("{\"Zip Code\" : '" + Zip + "'}");
-                var first = addr.First();
-                if(first !=null)
-                {
-                    State = first["State Abbreviation"].AsString;
-                    City = first["Place Name"].AsString;
-                }
-                
-
-            }
+            var task = zipCodeStates.Find("{}").ToListAsync();
+            task.Wait();
+            cache = task.Result;
+            cache.RemoveAll(x => x.Any(y => y.Value == BsonNull.Value));
         }
+
+        static List<BsonDocument> cache;
+
 
         private bool IsCity(string lexeme)
         {
-            lexeme = lexeme.Trim().Trim('\"');
+            lexeme = lexeme.Trim().Trim('\"').Trim('\"').ToLower();
 
             if (string.IsNullOrEmpty(lexeme))
                 return false;
 
-            var results = zipCodeStates.Find("{\"Place Name\" : '" + lexeme + "'}");
-            if (results.Any())
+            var result = cache.FirstOrDefault(x => 
+                {
+                    var data = x["Place Name"];
+                    var data1 = data.AsString;
+                    var data2 = data1.Trim(' ').ToLower();
+                    return data2 == lexeme;
+            });
+            if (result != null)
+            {
                 return true;
+            }
 
-            results = zipCodeStates.Find("{County : '" + lexeme + "'}");
-            if (results.Any())
+            result = cache.FirstOrDefault(x => x["County"]?.AsString.Trim(' ').ToLower() == lexeme);
+            if (result != null)
+            {
                 return true;
+            }
 
             return false;
 
@@ -98,8 +81,8 @@ namespace LoadPayerPlanDataToMongo
             else if (lexeme.Length != 5)
                 return false;
 
-            var results = zipCodeStates.Find("{\"Zip Code\" : '" + lexeme + "'}");
-            if (!results.Any())
+            var result = cache.FirstOrDefault(x => x["Zip Code"].AsString.Trim(' ') == lexeme);
+            if (result == null)
                 return false;
 
             return true;
@@ -116,27 +99,51 @@ namespace LoadPayerPlanDataToMongo
             if (!lexeme.All(x => char.IsLetter(x)))
                 return false;
 
-            var results = zipCodeStates.Find("{\"State Abbreviation\" : '" + lexeme + "'}");
-            if (!results.Any())
+            var result = cache.FirstOrDefault(x => x["State Abbreviation"].AsString.Trim(' ') == lexeme);
+            if ( result == null)
                 return false;
 
             return true;
         }
 
-        public string[] getAddress(BsonDocument b)
+        public void formAddress(BsonDocument b)
         {
             var fl = get("First_Line_BizAdd", b) ?? get("First_Line_BizLocAdd", b);
-
             var sl = get("Second_Line_BizAdd", b) ?? get("Second_Line_BizLocAdd", b);
-
             var ci = get("BizAdd_City_Name", b) ?? get("BizLocAdd_City_Name", b);
-
             var st = get("BizAdd_State_Name", b) ?? get("BizLocAdd_State_Name", b);
-
             var ot = get("BizLocAdd_Country_Code_If_outside_US", b);
 
             var po = getPO(b);
-            return new[] { fl, sl, ci, st, po, ot };
+            if (IsZip(po) && Zip == null)
+                Zip = po.Length == 9 ? po.Substring(0, 5) : po;
+
+            else if (IsState(st) && State == null)
+                State = st;
+
+            else if (IsCity(ci) && City == null)
+                City = ci;
+
+            else if (string.IsNullOrEmpty(AddressLine1))
+                AddressLine1 = fl?.Trim(' ').Trim('\"') ?? "";
+
+            else if (string.IsNullOrEmpty(AddressLine2))
+                AddressLine2 = sl?.Trim(' ').Trim('\"') ?? "";
+
+            if (Zip != null)
+            {
+
+                var first = cache.FirstOrDefault(x => x["Zip Code"].AsString.Trim(' ') == Zip);
+                if (first != null)
+                {
+                    State = first["State Abbreviation"].AsString;
+                    City = first["Place Name"].AsString;
+                }
+                else
+                {
+                    Console.WriteLine("oh god");
+                }
+            }
         }
 
         private string getPO(BsonDocument b)

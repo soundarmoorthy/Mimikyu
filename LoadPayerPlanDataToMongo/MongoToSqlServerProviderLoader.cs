@@ -3,8 +3,10 @@ using MongoDB.Driver;
 using System;
 using System.Collections.Generic;
 using System.Data.SqlClient;
+using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace LoadPayerPlanDataToMongo
@@ -14,222 +16,278 @@ namespace LoadPayerPlanDataToMongo
     {
         Dictionary<string, int> codes = new Dictionary<string, int>();
 
-        public void Load()
+        SqlConnection conn;
+        IMongoCollection<BsonDocument> inserted;
+        SqlTransaction transaction;
+        private readonly string practicesQuery = "{enumeration_type : 'NPI-2'}";
+
+        int unique;
+        public async void Load()
+        {
+            IMongoCollection<BsonDocument> collection = Initialize();
+            using (conn = new SqlConnection("Data Source=.;Initial Catalog=CMR;Integrated Security=True"))
+            {
+                conn.Open();
+                Run(collection);
+            }
+        }
+
+        private IMongoCollection<BsonDocument> Initialize()
         {
             var url = "mongodb://localhost:27017";
             var client = new MongoClient(url);
-            var database = client.GetDatabase("NPPEES");
-            var collection = database.GetCollection<BsonDocument>("US_Provider_Roaster");
-            var zipCodeTimeZones = database.GetCollection<BsonDocument>("ZipCodeTimeZone");
-            var zipCodeStates = database.GetCollection<BsonDocument>("ZipCodeStateNameMap");
-
-
-            using (SqlConnection conn = new SqlConnection("Data Source=.;Initial Catalog=CMR;Integrated Security=True"))
-            {
-                conn.Open();
-                Run(collection, zipCodeTimeZones, zipCodeStates, conn);
-            }
-
+            var database = client.GetDatabase("US");
+            var collection = database.GetCollection<BsonDocument>("provider");
+            inserted = database.GetCollection<BsonDocument>("inserted");
+            unique = (int)inserted.Count("{}") + 1;
+            return collection;
         }
 
-        private void Run(IMongoCollection<BsonDocument> collection, 
-            IMongoCollection<BsonDocument> zipCodeTimeZones, 
-            IMongoCollection<BsonDocument> zipCodeStates, 
-            SqlConnection conn)
+        private void Run(IMongoCollection<BsonDocument> collection)
         {
+            var practices = collection.Find(practicesQuery);
 
-            SqlTransaction transaction = conn.BeginTransaction("bson");
-            var count = 0;
-            var skip = 0;
-            var action = collection.Find("{Entity_Type_Code : '2'}").ForEachAsync(b =>
+            var task = practices.ForEachAsync(b =>
             {
-                string result = "";
-
-                result = insert(b, conn, zipCodeTimeZones, zipCodeStates, transaction);
-
-                if (result != "OK")
-                    transaction.Rollback("bson");
-
-                else
-                    transaction.Commit();
-
-                if (codes.ContainsKey(result))
-                {
-                    codes[result]++;
-                }
-                else
-                {
-                    codes.Add(result, 1);
-                }
-                count++;
-
-
-                if (count == 10000)
-                {
-                    Console.Clear();
-                    Console.CursorLeft = 0;
-                    Console.CursorTop = 0;
-                    foreach (var item in codes.Keys)
-                    {
-                        Console.WriteLine(item + "-" + codes[item]);
-
-                    }
-                    count = 0;
-                }
+                var p = new Provider(b).Location();
+                var result  = Process(p);
+                Trace(result);
             });
 
-            action.Wait();
-            Console.Read();
+            task.Wait();
+
+
         }
 
-        bool toggle = false;
-
-        private string insert(BsonDocument b, SqlConnection conn, IMongoCollection<BsonDocument> zipCodeTimeZones
-            , IMongoCollection<BsonDocument> zipCodeStates, SqlTransaction transaction)
+        int count;
+        private string Process(Provider p)
         {
-            try
+
+            //If already present return
+            var completed = inserted.Find($"{{_id: '{p.Id}' }}");
+            if (completed.Any())
+                return "Skipped";
+
+            //Now insert the record
+            transaction = conn.BeginTransaction(p.Id);
+            string result = Insert(p);
+
+            if (result != "OK")
             {
-
-                var npi = get("_id", b);
-
-                var practice_name = get("Org_Name_Legal_Business_Name",b);
-
-                //provider table
-                string query1 = string.Format(provider_query_template, npi);
-                var cmd1 = new SqlCommand(query1, conn, transaction);
-                var provider_key = (int)cmd1.ExecuteScalar();
-
-                //practice table
-
-                string query2 = string.Format(practice_query_template, provider_key, practice_name);
-                var cmd2 = new SqlCommand(query2, conn, transaction);
-                var practice_Identifier = ((string)cmd2.ExecuteScalar()).Trim(' ');
-
-                var address = new Address(b, zipCodeStates);
-
-
-                string addr_query = string.Format(address_query, "");
-                var addr_Cmd = new SqlCommand(addr_query, conn, transaction);
-                var address_key = (int)addr_Cmd.ExecuteScalar();
-
-                var tz = getTimeZone(address.Zip, zipCodeTimeZones);
-                var phone = getPhone(b);
-                var fax = getFax(b, phone);
-
-                //practice location
-                string query3 = string.Format(practice_location_query, practice_name, practice_Identifier, address_key, tz, phone, fax);
-                var cmd3 = new SqlCommand(query3, conn, transaction);
-                var practice_location_key = (int)cmd3.ExecuteScalar();
-
-                int mem_network = FindMemNetwork(address.Zip, conn, zipCodeStates);
-
-                //practice member network
-                string query4 = string.Format(practice_member_nw_query, practice_Identifier, mem_network); 
-                var cmd4 = new SqlCommand(query4, conn, transaction);
-                int result =cmd4.ExecuteNonQuery();
-
+                transaction.Rollback(p.Id);
             }
-            catch(Exception ex)
+            else
             {
-                return "Exception";
+                transaction.Commit();
+                inserted.InsertOne(new BsonDocument("_id", p.Id));
+                unique++;
             }
-            return "OK";
-        }
 
-        private int FindMemNetwork(string zip, SqlConnection conn, IMongoCollection<BsonDocument> zipCodeStates)
-        {
-            var found = zipCodeStates.Find(string.Format("{\"Zip Code\" : '{0}'}", zip));
-            var name = found.First().GetValue("State").AsString;
-            SqlCommand foo = new SqlCommand(string.Format("select MemberNetworKey from network.MemberNetwork where Name like '{0}%'", name), conn);
-            int result = (int)foo.ExecuteScalar();
             return result;
 
         }
 
-        private string getPhone(BsonDocument b)
+        private string Trace(string result)
         {
-            return getNum (b, new[]{ "BizAdd_Telephone_Number", "BizLocAdd_Telephone_Number",
-                "BizAdd_Fax_Number", "BizLocAdd_Fax_Number" });
-        }
-
-        private string getFax(BsonDocument b, string num)
-        {
-            return getNum(b, new[] { "BizAdd_Fax_Number", "BizLocAdd_Fax_Number",
-                "BizAdd_Telephone_Number", "BizLocAdd_Telephone_Number" },num);
-        }
-
-        private string getNum(BsonDocument b, string[] fields, string num ="")
-        {
-            long value; 
-            foreach (var field in fields)
+            if (codes.ContainsKey(result))
             {
-                if (long.TryParse(get(field, b), out value))
-                {
-                    if (value.ToString().Length == 10 && value.ToString() != num)
-                        return value.ToString();
-                }
+                codes[result]++;
             }
-            if (num != string.Empty)
-                return num;
             else
-                return new Random(1000000000).Next().ToString();
-
-        }
-
-        private string getTimeZone(string zip , IMongoCollection<BsonDocument> zipCodeTimeZones)
-        {
-            var query = string.Format("{{zip : '{0}'}}", zip);
-            var result = zipCodeTimeZones.Find(query);
-
-            var timezone = result.FirstOrDefault();
-
-            BsonElement element;
-            if(timezone.TryGetElement("timezone", out element))
             {
-                return element.Value.AsString;
+                codes.Add(result, 1);
+            }
+            count++;
 
+
+            if (count == 2000)
+            {
+                Console.Clear();
+                Console.CursorLeft = 0;
+                Console.CursorTop = 0;
+                StringBuilder b = new StringBuilder();
+
+                foreach (var item in codes.Keys)
+                {
+                    b.AppendLine($"{item} - {codes[item]}");
+                }
+
+                Console.WriteLine(b);
+                File.WriteAllText("log.log", b.ToString());
+                count = 0;
             }
 
-            return null;
+            return result;
+        }
+
+        private string Insert(Provider p)
+        {
+            try
+            {
+                int providerKey = 0;
+                if (!Exists(p.NPI, out providerKey))
+                {
+                    providerKey = SetupPractice(p);
+                }
+                else
+                    return "Practice Exists";
+
+                return SetupLocation(p, providerKey);
+
+            }
+            catch (SqlException se)
+            {
+                return se.Message;
+            }
+            catch(Exception e)
+            {
+                return e.ToString();
+            }
+        }
+
+        private string SetupLocation(Provider p, int providerKey)
+        {
+            var orgName = p.OrgName;
+            if (LocationExists(orgName))
+            {
+                orgName = $"{orgName}-{p.City}-{p.ZipCode}";
+            }
+
+            if (LocationExists(orgName))
+                return "Location Damn Exists";
+
+            //Address
+            var query = GetAddressQuery(p);
+            var cmd = new SqlCommand(query, conn, transaction);
+            var addrKey = (int)cmd.ExecuteScalar();
+
+            //practice location
+            var tz = GetTimeZone(p.StateCode);
+            query = string.Format(practice_location_query, p.OrgName, providerKey, addrKey, tz, p.Phone, p.Fax, unique);
+            cmd = new SqlCommand(query, conn, transaction);
+            var praLocKey = (int)cmd.ExecuteScalar();
+
+            return "OK";
+        }
+
+        private int SetupPractice(Provider p)
+        {
+            var npi = p.NPI;
+            var pName = p.OrgName;
+            //provider table
+            var query = string.Format(provider_query_template, npi, p.Description);
+            var cmd = new SqlCommand(query, conn, transaction);
+            var proKey = (int)cmd.ExecuteScalar();
+
+            //practice table
+            query = string.Format(practice_query_template, proKey, pName, unique);
+            cmd = new SqlCommand(query, conn, transaction);
+            cmd.ExecuteNonQuery();
+
+            int mem_network = FindMemNetwork(p.StateCode, p.CountryCode);
+
+            //practice member network
+            query = string.Format(practice_member_nw_query, proKey, mem_network);
+            cmd = new SqlCommand(query, conn, transaction);
+            cmd.ExecuteNonQuery();
+
+            return proKey;
+        }
+
+        private bool LocationExists(string orgName)
+        {
+            var query = $"select PracticeLocationKey from provider.practiceLocation where Name='{orgName}'";
+            var comnd = new SqlCommand(query, conn, transaction);
+            var reslt = comnd.ExecuteScalar();
+            return reslt != null && ((int)reslt) > 0;
+        }
+
+
+        private bool Exists(string npi, out int providerKey)
+        {
+            var query = $"select ProviderKey from Provider.Provider where NationalProviderIdentifier='{npi}'";
+            var cmd = new SqlCommand(query, conn, transaction);
+            var result = cmd.ExecuteScalar()?.ToString();
+            return int.TryParse(result, out providerKey) && providerKey > 0;
+        }
+
+        private int GetTimeZone(string stateCode)
+        {
+            return USStateToTimeZone.TimeZoneKey(stateCode);
 
         }
 
+        private string GetAddressQuery(Provider p)
+        {
+            //insert into provider.Address (AddressLine1, AddressLine2, City, State, ZipCode, CreatedBy) 
+
+            string query = string.Empty;
+            if (p.CountryCode != "US" || USPacificIslands(p.StateCode))
+                query = string.Format(address_query_template_non_us, p.AddrLine1, p.AddrLine2, p.City, p.ZipCode);
+            else
+                query = string.Format(address_query_template, p.AddrLine1, p.AddrLine2, p.City, p.StateCode, p.ZipCode);
+
+            return query;
+
+        }
+
+        private int FindMemNetwork(string stateCode, string countryCode)
+        {
+            if (countryCode != "US" || USPacificIslands(stateCode))
+                return 106; //Return generic network.
+
+            if (states.ContainsKey(stateCode))
+                return states[stateCode];
+
+            string stateName = string.Empty;
+            USCodeToStates.Map.TryGetValue(stateCode, out stateName);
+            SqlCommand foo = new SqlCommand(string.Format(find_network_query, stateName), conn, transaction);
+            var res = foo.ExecuteScalar();
+            var result = (int)res;
+            states.Add(stateCode, result);
+            return result;
+
+        }
+
+        List<string> pacific = new List<string>{ "AP", "GU", "VI", "PW","FM","AA", "AS", "MP" };
+        StringCaseInsensitiveComparer comparer = new StringCaseInsensitiveComparer();
+        private bool USPacificIslands(string stateCode)
+        {
+            return pacific.Contains(stateCode, comparer);
+        }
+
+        Dictionary<string, int> states = new Dictionary<string, int>();
 
 
         const string provider_query_template = @"insert into provider.provider 
                                                (ProviderType, NationalProviderIdentifier, IsAcceptingReferral, 
                                                 IsSearchable, IsActive, Description, CreatedBy) 
                                                 OUTPUT inserted.ProviderKey 
-                                                values (1, '{0}', 1,1,1, 'This is an awesome practice', 1)";
+                                                values (1, '{0}', 1,1,1, '{1}', 1)";
 
         const string practice_query_template = @"insert into provider.Practice
                                                (Provider,Name, PracticeIdentifier,PracticeType) 
                                                OUTPUT inserted.PracticeIdentifier
-                                               values ({0}, '{1}', STR(CHECKSUM(NewId()) % 1000000), 'Practice')";
+                                               values ({0}, '{1}', {2}, 'Practice')";
 
         const string practice_location_query = @"insert into provider.PracticeLocation
-                                               (Name, Practice, Address, TimeZone, PrimaryPhone,PrimaryFax, 
-                                               IsPrimaryLocation, IsActive, CreatedBy, IsFaxOnly, IsAmbulatory)
+                                               (Name, Practice, Address,TimeZone, PrimaryPhone,PrimaryFax, 
+                                               IsPrimaryLocation, IsActive, CreatedBy, IsFaxOnly, IsAmbulatory, PracticeLocationIdentifier)
                                                OUTPUT INSERTED.PracticeLocationkey
-                                               values ('{0}', '{1}', {2}, '{3}', '{4}', '{5}', 1,1,1, CAST(ROUND(RAND(),0) AS BIT), 1)";
+                                               values ('{0}',{1},{2},{3}, '{4}', '{5}', 1,1,1,CAST(rand()*10 as INT) % 2, CAST(rand()*10 as INT) % 2, {6})";
 
         const string practice_member_nw_query = @"insert into provider.PracticeMemberNetwork
-                                                (Prakctice, MemberNetwork, PracticeMemberNetworkState, IsActive, CreatedBy)
+                                                (Practice, MemberNetwork, PracticeMemberNetworkState, IsActive, CreatedBy)
                                                 values ({0}, {1}, 3, 1,1)";
 
-        const string address_query = @"insert into provider.Address (AddressLine1, AddressLine2, City, State, ZipCode, CreatedBy) 
-                                        output inserted.AddressKey values ('{0}', '{1}', '{2}', '{3}', '{4}', 1)";
+        const string address_query_template = @"insert into provider.Address (AddressLine1, AddressLine2, City, State, ZipCode, CreatedBy) 
+                                              output inserted.AddressKey values ('{0}', '{1}', '{2}', '{3}', '{4}', 1)";
+
+        const string address_query_template_non_us = @"insert into provider.Address (AddressLine1, AddressLine2, City, ZipCode, CreatedBy) 
+                                              output inserted.AddressKey values ('{0}', '{1}', '{2}', '{3}', 1)";
 
 
-        private static string get(string name, BsonDocument b)
-        {
+        const string find_network_query = "select MemberNetworkKey from network.MemberNetwork where LOWER(SUBSTRING(NAME, 0,CHARINDEX(' Network',Name,0))) = LOWER('{0}')";
 
-            string item = "";
-            if (b.Contains(name))
-                item = b.GetValue(name).AsString.Trim();
-
-
-            return item;
-        }
     }
 }
