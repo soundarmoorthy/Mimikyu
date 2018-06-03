@@ -78,12 +78,15 @@
     <Compile Include="Address.cs" />
     <Compile Include="MongoToSqlServerMemberNetwork.cs" />
     <Compile Include="MongoToSqlServerPatientLoader.cs" />
+    <Compile Include="MongoToSqlServerPractitionerLoader.cs" />
     <Compile Include="NPPESLoader.cs" />
     <Compile Include="NPPESRequest.cs" />
     <Compile Include="Patient\IParseStrategy.cs" />
     <Compile Include="Patient\Patient.cs" />
     <Compile Include="Patient\PatientParseStrategy1.cs" />
     <Compile Include="Patient\PatientParseStrategy2.cs" />
+    <Compile Include="ContentIterator.cs" />
+    <Compile Include="PracticeLocationOpenMaket.cs" />
     <Compile Include="Provider.cs" />
     <Compile Include="ProviderAddressValidator.cs" />
     <Compile Include="MongoToSqlServerProviderLoader.cs" />
@@ -92,6 +95,8 @@
     <Compile Include="MongoPayerLoader.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="ProviderLanguageRandomizerLoader.cs" />
+    <Compile Include="ProviderSubSpecialityLoader.cs" />
     <Compile Include="Service References\ServiceReference1\Reference.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>

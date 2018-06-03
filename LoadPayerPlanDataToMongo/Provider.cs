@@ -32,8 +32,19 @@ namespace LoadPayerPlanDataToMongo
 
         public string NPI => source["number"].ToString();
 
-        public string OrgName => Canonical(source["basic"]["organization_name"]);
+        public string Firstname => Canonical(source["basic"]["first_name"]);
 
+        public string Middlename => Canonical(source["basic"]["middle_name"]) ?? "";
+
+        public string Lastname => Canonical(source["basic"]["last_name"]);
+
+        public string Gender => Canonical(source["basic"]["gender"], native);
+
+
+        public string Credential => Canonical(source["basic"]["credential"]);
+        public string Suffix => Canonical(source["basic"]["name_suffix"]) ?? "";
+
+        public string OrgName => Canonical(source["basic"]["organization_name"]);
 
         public string AddrLine1 => Canonical(address["address_1"]);
 
@@ -49,11 +60,13 @@ namespace LoadPayerPlanDataToMongo
 
 
         public string Description => Canonical(source["taxonomies"][0]["desc"]);
+        public object License => Canonical(source["taxonomies"][0]["license"]);
 
         public string Phone => ParseOrForce(address["telephone_number"]);
 
 
         public string Fax => ParseOrForce(address["fax_number"]);
+
 
         public string ZipCode
         {
@@ -65,13 +78,18 @@ namespace LoadPayerPlanDataToMongo
         }
 
 
-
-        private string Canonical(JToken token)
+        private string Canonical(JToken token, Func<string, string> postProcess = null)
         {
             if (token == null)
+            {
                 return null;
+            }
             else
-                return token.ToString().Replace("'", "");
+            {
+                var str = token.ToString().Replace("'", "").Replace("\r", "");
+                return postProcess != null ? postProcess(str) : str;
+
+            }
         }
 
         private string ParseOrForce(JToken token)
@@ -92,6 +110,12 @@ namespace LoadPayerPlanDataToMongo
         private static string Force()
         {
             return new Random().Next(1000000000, int.MaxValue).ToString();
+        }
+
+        private string native(string arg)
+        {
+            arg = arg.ToUpper();
+            return (arg == "M" || arg == "N" || arg == "F") ? arg : "N";
         }
 
         private Provider Context(int i)

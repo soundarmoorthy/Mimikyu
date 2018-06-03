@@ -17,6 +17,27 @@ namespace LoadPayerPlanDataToMongo
     {
         static void Main(string[] args)
         {
+            //int a = 0;
+
+            //int count = 10;
+            //int b = 0;
+
+            //while (true)
+            //{
+            //    a++;
+            //    Console.WriteLine(a % count);
+
+            //    if (a == count)
+            //    {
+            //        a = 0;
+            //        b++;
+            //    }
+
+            //    if (b == 2)
+            //        break;
+
+            //}
+
             //MongoPayerLoader loader = new MongoPayerLoader();
             //loader.Load();
 
@@ -29,12 +50,20 @@ namespace LoadPayerPlanDataToMongo
             //MongoToSqlServerMemberNetwork loader = new MongoToSqlServerMemberNetwork();
             //loader.Run();
 
-            MongoToSqlServerPracticeLoader loader = new MongoToSqlServerPracticeLoader();
-            loader.Load();
+            //MongoToSqlServerPracticeLoader loader = new MongoToSqlServerPracticeLoader();
+            //loader.Load();
 
             //NPPESLoader loader = new NPPESLoader();
             //loader.Run();
 
+            //ProviderLanguageRandomizerLoader loader = new ProviderLanguageRandomizerLoader();
+            //loader.Load();
+
+            //ProviderSubSpecialityLoader loader = new ProviderSubSpecialityLoader();
+            //loader.Load();
+
+            MongoToSqlServerPractitionerLoader loader = new MongoToSqlServerPractitionerLoader();
+            loader.Load();
         }
     }
 }
