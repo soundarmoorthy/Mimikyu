@@ -15,7 +15,7 @@ namespace LoadPayerPlanDataToMongo
         public MongoToSqlServerPayerLoader()
         {
             
-            conn = new SqlConnection("Data Source=.;Initial Catalog=test;Integrated Security=True");
+            conn = new SqlConnection("Data Source=.;Initial Catalog=CMR;Integrated Security=True");
 
         }
 

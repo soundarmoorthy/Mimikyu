@@ -102,10 +102,11 @@ namespace LoadPayerPlanDataToMongo
             var countFipsCode = b.GetValue("CountyFIPSCode")?.AsString ?? string.Empty;
 
             planName = string.Join("-", countFipsCode, planName);
-            SqlCommand cmd = new SqlCommand(string.Format("select PayerPlanKey from provider.payerplan where Name='{0}'", planName), conn);
-            var result = cmd.ExecuteScalar();
-            if (result != null && (int)result > 1)
-            {
+            //SqlCommand cmd = new SqlCommand(string.Format("select PayerPlanKey from provider.payerplan where Name='{0}'", planName), conn);
+            //var result = cmd.ExecuteScalar();
+            //if (result != null && (int)result > 1)
+            //{
+            object result = "This should not work";
 
                 var query = string.Format(queryTemplate, zipCode, (int)result);
                 SqlCommand command = new SqlCommand(query, conn);
@@ -118,9 +119,9 @@ namespace LoadPayerPlanDataToMongo
                 {
                     return "Exception";
                 }
-            }
-            else
-                return "No Plan Found";
+            //}
+            //else
+             //   return "No Plan Found";
            
         }
     }

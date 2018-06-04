@@ -66,7 +66,7 @@ namespace LoadPayerPlanDataToMongo
             //If already present return
             var completed = inserted.Find($"{{_id: '{p.Id}' }}");
             if (completed.Any())
-                return "Skipped";
+                return "Already Present";
 
             //Now insert the record
             transaction = conn.BeginTransaction(p.Id);
@@ -124,15 +124,22 @@ namespace LoadPayerPlanDataToMongo
         {
             try
             {
-                if (Exists(p.NPI))
-                    return "SKIPPED";
+                int pKey =0;
+                if (Exists(p.NPI, out pKey))
+                {
+                    SetupPractitioner(p, pKey);
+                    return "New Location";
+                }
+                else
+                {
+                    SetupPractitioner(p);
+                    return "OK";
+                }
 
-                SetupPractitioner(p);
-                return "OK";
             }
-            catch (SqlException se)
+            catch(SqlException ex)
             {
-                return se.Message;
+                return ex.Message.Substring(0, 70);
             }
             catch (Exception e)
             {
@@ -141,9 +148,8 @@ namespace LoadPayerPlanDataToMongo
 
         }
 
-        private bool Exists(string npi)
+        private bool Exists(string npi, out int providerKey)
         {
-            int providerKey = 0;
             var query = $"select ProviderKey from Provider.Provider where NationalProviderIdentifier='{npi}'";
             var cmd = new SqlCommand(query, conn, transaction);
             var result = cmd.ExecuteScalar()?.ToString();
@@ -151,52 +157,68 @@ namespace LoadPayerPlanDataToMongo
         }
 
 
-        private int SetupPractitioner(Provider p)
+        private int SetupPractitioner(Provider p, int proKey=0)
         {
-            //provider
-            var query = string.Format(provider_query_template, p.NPI, p.Description);
-            var cmd = new SqlCommand(query, conn, transaction);
-            var proKey = (int)cmd.ExecuteScalar();
+            bool existing = proKey != 0;
+            string query = string.Empty;
+            SqlCommand cmd;
+            if (!existing)
+            {
+                //provider
+                query = string.Format(provider_query_template, p.NPI, p.Description);
+                cmd = new SqlCommand(query, conn, transaction);
+                proKey = (int)cmd.ExecuteScalar();
 
-            //practitioner table
-            query = $"INSERT INTO [provider].[Practitioner] VALUES({proKey}, '{p.Firstname}', '{p.Middlename}', '{p.Lastname}', '{p.Gender}', '{p.Credential}', '{p.Suffix}', '{unique}')";
-            cmd = new SqlCommand(query, conn, transaction);
-            cmd.ExecuteNonQuery();
+                //practitioner table
+                query = $"INSERT INTO [provider].[Practitioner] VALUES({proKey}, '{p.Firstname}', '{p.Middlename}', '{p.Lastname}', '{p.Gender}', '{p.Credential}', '{p.Suffix}', '{unique}')";
+                cmd = new SqlCommand(query, conn, transaction);
+                cmd.ExecuteNonQuery();
+            }
 
             //practice location
             var pLocKey = PracticeLocation(p.ZipCode, p.CountryCode);
-            query = $"INSERT INTO [provider].[PractitionerPracticeLocation] (Practitioner, PracticeLocation, CreatedBy) VALUES({proKey}, '{pLocKey}', 1)";
-            cmd = new SqlCommand(query, conn, transaction);
-            cmd.ExecuteNonQuery();
+            IngestPracticeLocation(proKey,pLocKey);
 
             //subspecialty
-            var sp = Subspecialty(pLocKey);
-            var pri = 1;
-            foreach (var s in sp)
+            if (!existing)
             {
-                query = $"Insert into provider.PractitionerSubSpecialty (Practitioner, Subspecialty, IsPrimary, IsBoardCertified, CreatedBy) VALUES ({proKey}, {s}, {pri},1,1)";
+                var sp = Subspecialty(pLocKey);
+                var pri = 1;
+                foreach (var s in sp)
+                {
+                    query = $"Insert into provider.PractitionerSubSpecialty (Practitioner, Subspecialty, IsPrimary, IsBoardCertified, CreatedBy) VALUES ({proKey}, {s}, {pri},1,1)";
+                    cmd = new SqlCommand(query, conn, transaction);
+                    cmd.ExecuteNonQuery();
+                    pri = 0;
+                }
+
+
+                var payerPlans = PractitionerPayerPlans(p.ZipCode);
+                foreach (var pp in payerPlans)
+                {
+                    query = $"Insert into provider.ProviderPayerPlan (Provider,PayerPlan, CreatedBy) VALUES ({proKey}, {pp}, 1)";
+                    cmd = new SqlCommand(query, conn, transaction);
+                    cmd.ExecuteNonQuery();
+                }
+
+
+
+                string stateCode = p.StateCode;
+                if (stateCode.Length > 2 || !USCodeToStates.Map.ContainsKey(stateCode))
+                    stateCode = "TX";
+                query = $"Insert into provider.PractitionerLicense (Practitioner, LicenseNumber, State, CreatedBy) VALUES ({proKey}, '{p.License}', '{stateCode}', 1)";
                 cmd = new SqlCommand(query, conn, transaction);
                 cmd.ExecuteNonQuery();
-                pri = 0;
             }
-
-            var payerPlans = PractitionerPayerPlans(p.ZipCode);
-            foreach (var pp in payerPlans)
-            {
-                query = $"Insert into provider.ProviderPayerPlan (Provider,PayerPlan, CreatedBy) VALUES ({proKey}, {pp}, 1)";
-                cmd = new SqlCommand(query, conn, transaction);
-                cmd.ExecuteNonQuery();
-            }
-
-
-            string stateCode = p.StateCode;
-            if (stateCode.Length > 2 || !USCodeToStates.Map.ContainsKey(stateCode))
-                stateCode = "TX";
-            query = $"Insert into provider.PractitionerLicense (Practitioner, LicenseNumber, State, CreatedBy) VALUES ({proKey}, '{p.License}', '{stateCode}', 1)";
-            cmd = new SqlCommand(query, conn, transaction);
-            cmd.ExecuteNonQuery();
 
             return proKey;
+        }
+
+        private void IngestPracticeLocation(int proKey, int pLocKey)
+        {
+            var query = $"INSERT INTO [provider].[PractitionerPracticeLocation] (Practitioner, PracticeLocation, CreatedBy) VALUES({proKey}, '{pLocKey}', 1)";
+            var cmd = new SqlCommand(query, conn, transaction);
+            cmd.ExecuteNonQuery();
         }
 
         private IEnumerable<int> PractitionerPayerPlans(string strZip)
