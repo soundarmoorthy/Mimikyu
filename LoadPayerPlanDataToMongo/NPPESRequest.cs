@@ -9,22 +9,28 @@ using System.Collections.Concurrent;
 
 namespace LoadPayerPlanDataToMongo
 {
-    internal class NPPESClient
+    internal class StatefulAsyncWebClient
     {
         readonly Action<string> callback;
-        public NPPESClient(Action<string> callback)
+        public StatefulAsyncWebClient(Action<string> callback, string uri = null)
         {
             this.callback = callback;
+
+            if (uri != null)
+                this.uri = uri;
+            else
+                uri = "https://npiregistry.cms.hhs.gov/api/?number={0}";
         }
 
 
         ConcurrentDictionary<int,Task> running = new ConcurrentDictionary<int, Task>();
 
-        const string uri = "https://npiregistry.cms.hhs.gov/api/?number={0}";
-        public async Task RequestAsync(string npi)
+        readonly string uri;
+        public async Task RequestAsync(params string[] values)
         {
-            var request = WebRequest.Create(string.Format(uri, npi)) as HttpWebRequest;
+            var request = WebRequest.Create(string.Format(uri, values)) as HttpWebRequest;
             var task = request.GetResponseAsync();
+            Console.WriteLine("Resuested");
             task.ContinueWith(promise);
 
             running.TryAdd(task.Id, task);
@@ -37,8 +43,9 @@ namespace LoadPayerPlanDataToMongo
 
         private void promise(Task<WebResponse> task)
         {
-            Console.WriteLine("\tRecived Response");
             var response = (HttpWebResponse)task.Result;
+            Console.WriteLine("\t\tReceived");
+
 
             if (response.StatusCode == HttpStatusCode.OK)
             {
@@ -55,6 +62,11 @@ namespace LoadPayerPlanDataToMongo
                     {
                         callback(body);
                     }
+                    catch(Exception ex)
+                    {
+                        Console.WriteLine(ex.Message);
+
+                    }
                     finally
                     {
                         Task t;
@@ -62,7 +74,6 @@ namespace LoadPayerPlanDataToMongo
                     }
 
                 }
-
             }
         }
     }

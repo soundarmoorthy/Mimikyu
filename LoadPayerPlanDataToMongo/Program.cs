@@ -53,8 +53,8 @@ namespace LoadPayerPlanDataToMongo
             //MongoToSqlServerPracticeLoader loader = new MongoToSqlServerPracticeLoader();
             //loader.Load();
 
-            MongoToSqlServerPayerLoader loader = new MongoToSqlServerPayerLoader();
-            loader.QueryLoad();
+            //MongoToSqlServerPayerLoader loader = new MongoToSqlServerPayerLoader();
+            //loader.QueryLoad();
 
             //NPPESLoader loader = new NPPESLoader();
             //loader.Run();
@@ -67,6 +67,9 @@ namespace LoadPayerPlanDataToMongo
 
             //MongoToSqlServerPractitionerLoader loader = new MongoToSqlServerPractitionerLoader();
             //loader.Load();
+
+            ZCTABuilder builder = new ZCTABuilder();
+            builder.Build();
         }
     }
 }

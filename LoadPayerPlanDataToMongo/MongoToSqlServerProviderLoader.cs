@@ -25,7 +25,7 @@ namespace LoadPayerPlanDataToMongo
         public async void Load()
         {
             IMongoCollection<BsonDocument> collection = Initialize();
-            using (conn = new SqlConnection("Data Source=.;Initial Catalog=CMR;Integrated Security=True"))
+            using (conn = new SqlConnection("Data Source=.;Initial Catalog=ReferralNetwork;Integrated Security=True"))
             {
                 conn.Open();
                 Run(collection);

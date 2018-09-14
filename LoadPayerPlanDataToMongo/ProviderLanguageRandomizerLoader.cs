@@ -23,10 +23,10 @@ namespace LoadPayerPlanDataToMongo
 
         public void Load()
         {
-            using (conn = new SqlConnection("Data Source=.;Initial Catalog=CMR;Integrated Security=True"))
+            using (conn = new SqlConnection("Data Source=.;Initial Catalog=ReferralNetwork;Integrated Security=True"))
             {
 
-                using (conn1 = new SqlConnection("Data Source=.;Initial Catalog=CMR;Integrated Security=True"))
+                using (conn1 = new SqlConnection("Data Source=.;Initial Catalog=ReferralNetwork;Integrated Security=True"))
                 {
                     conn.Open();
                     conn1.Open();

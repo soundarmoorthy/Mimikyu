@@ -15,7 +15,7 @@ namespace LoadPayerPlanDataToMongo
         public MongoToSqlZipCodeLoader()
         {
             
-            conn = new SqlConnection("Data Source=.;Initial Catalog=CMR;Integrated Security=True");
+            conn = new SqlConnection("Data Source=.;Initial Catalog=ReferralNetwork;Integrated Security=True");
 
         }
 

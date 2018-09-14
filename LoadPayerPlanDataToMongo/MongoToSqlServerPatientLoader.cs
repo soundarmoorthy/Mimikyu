@@ -22,7 +22,7 @@ namespace LoadPayerPlanDataToMongo
         public MongoToSqlServerPatientLoader()
         {
             conn = new SqlConnection
-                ("Data Source=.;Initial Catalog=CMR;Integrated Security=True");
+                ("Data Source=.;Initial Catalog=MemberNetwork;Integrated Security=True");
 
         }
 

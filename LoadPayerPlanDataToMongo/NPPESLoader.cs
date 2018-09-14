@@ -25,7 +25,7 @@ namespace LoadPayerPlanDataToMongo
 
         IMongoDatabase us;
         IMongoCollection<BsonDocument> nppes;
-        NPPESClient nppesRequests;
+        StatefulAsyncWebClient nppesRequests;
 
         public async void Run()
         {
@@ -37,7 +37,7 @@ namespace LoadPayerPlanDataToMongo
             us = client.GetDatabase("US");
             nppes = us.GetCollection<BsonDocument>("NPPES");
 
-            nppesRequests = new NPPESClient(process);
+            nppesRequests = new StatefulAsyncWebClient(process);
 
             await Queue(collection);
             awaitAllPending();
